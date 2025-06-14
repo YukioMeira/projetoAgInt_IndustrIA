@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Notas Fiscais</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 1.1em;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: block;
+            width: 100%;
+            cursor: pointer;
+        }
+        
+        .file-input {
+            width: 100%;
+            padding: 20px;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            color: #667eea;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80px;
+        }
+        
+        .file-input:hover, .file-input-wrapper:hover .file-input {
+            border-color: #764ba2;
+            background: #f0f2ff;
+            transform: translateY(-1px);
+        }
+        
+        input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 120px;
+            font-family: inherit;
+            transition: border-color 0.3s ease;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .result h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .metadata {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .file-name {
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        .debug-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 0.85em;
+            color: #856404;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .response-content {
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .raw-response {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.8em;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Analisador de Notas Fiscais</h1>
+        
+        <form id="analysisForm">
+            <div class="form-group">
+                <label for="zipFile">Arquivo ZIP com CSVs das Notas Fiscais:</label>
+                <div class="file-input-wrapper">
+                    <div class="file-input" id="fileInputDisplay">
+                        📁 Clique para selecionar o arquivo ZIP
+                    </div>
+                    <input type="file" id="zipFile" accept=".zip" required>
+                </div>
+                <div class="file-name" id="fileName"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="question">Sua pergunta sobre os dados:</label>
+                <textarea 
+                    id="question" 
+                    placeholder="Ex: Qual o valor total das notas fiscais? Quais são os produtos mais vendidos? Qual a média de itens por nota fiscal?"
+                    required
+                ></textarea>
+            </div>
+            
+            <button type="submit" class="btn" id="submitBtn">
+                🚀 Analisar Dados
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando arquivo e consultando IA...</p>
+        </div>
+        
+        <div class="result" id="result">
+            <h3 id="resultTitle"></h3>
+            <div id="resultContent" class="response-content"></div>
+            <div class="metadata" id="metadata"></div>
+            <div class="debug-info" id="debugInfo" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração do endpoint do n8n
+        const N8N_WEBHOOK_URL = 'https://grupoindustriai2a2.app.n8n.cloud/webhook/analisar-nf';
+        
+        // Elementos do DOM
+        const form = document.getElementById('analysisForm');
+        const fileInput = document.getElementById('zipFile');
+        const fileInputDisplay = document.getElementById('fileInputDisplay');
+        const fileName = document.getElementById('fileName');
+        const questionInput = document.getElementById('question');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultContent = document.getElementById('resultContent');
+        const metadata = document.getElementById('metadata');
+        const debugInfo = document.getElementById('debugInfo');
+        
+        // Event listeners
+        fileInput.addEventListener('change', handleFileSelection);
+        fileInputDisplay.addEventListener('click', () => fileInput.click());
+        form.addEventListener('submit', handleFormSubmit);
+        
+        function handleFileSelection(event) {
+            const file = event.target.files[0];
+            if (file) {
+                fileInputDisplay.textContent = '✅ Arquivo selecionado';
+                fileName.textContent = `📄 ${file.name} (${formatFileSize(file.size)})`;
+                
+                // Validar se é um arquivo ZIP
+                if (!file.name.toLowerCase().endsWith('.zip')) {
+                    showResult('error', 'Erro de Formato', 'Por favor, selecione um arquivo ZIP.');
+                    return;
+                }
+            }
+        }
+        
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const file = fileInput.files[0];
+            const question = questionInput.value.trim();
+            
+            if (!file || !question) {
+                showResult('error', 'Campos Obrigatórios', 'Selecione um arquivo ZIP e digite sua pergunta.');
+                return;
+            }
+            
+            // Mostrar loading
+            showLoading(true);
+            hideResult();
+            
+            try {
+                console.log('=== INICIANDO REQUISIÇÃO ===');
+                console.log('URL:', N8N_WEBHOOK_URL);
+                console.log('Arquivo:', file.name, 'Tamanho:', file.size, 'Tipo:', file.type);
+                console.log('Pergunta:', question);
+                
+                // Preparar FormData - usando os nomes corretos baseados no workflow
+                const formData = new FormData();
+                formData.append('pergunta', question);
+                formData.append('data', file);  // Nome que o n8n consegue processar
+                
+                // Log do que está sendo enviado
+                console.log('FormData criado com campos:');
+                for (let pair of formData.entries()) {
+                    console.log(`- ${pair[0]}:`, pair[1] instanceof File ? `File(${pair[1].name})` : pair[1]);
+                }
+                
+                const response = await fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('=== RESPOSTA RECEBIDA ===');
+                console.log('Status:', response.status, response.statusText);
+                console.log('Headers:', Object.fromEntries(response.headers.entries()));
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Erro HTTP:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}\n\nDetalhes:\n${errorText}`);
+                }
+                
+                // Ler resposta como texto primeiro
+                const responseText = await response.text();
+                console.log('Resposta raw:', responseText);
+                
+                // Tentar fazer parse do JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                    console.log('JSON parseado com sucesso:', data);
+                } catch (parseError) {
+                    console.error('Erro ao fazer parse JSON:', parseError);
+                    
+                    // Se não conseguir fazer parse, mostrar como texto
+                    if (responseText.includes('Workflow was started')) {
+                        showResult('error', '⚠️ Workflow Iniciado', 
+                            'O workflow foi iniciado mas não retornou dados estruturados. Verifique a configuração dos nós "Resposta Sucesso" e "Resposta Erro" no n8n.',
+                            null, { raw_response: responseText });
+                    } else {
+                        showResult('error', '❌ Resposta Inválida', 
+                            `A resposta não está no formato JSON esperado:\n\n${responseText.substring(0, 500)}...`,
+                            null, { raw_response: responseText });
+                    }
+                    return;
+                }
+                
+                console.log('=== PROCESSANDO RESPOSTA ===');
+                console.log('Estrutura da resposta:', Object.keys(data));
+                
+                // Verificar diferentes estruturas de resposta possíveis
+                if (data.sucesso === true && data.resposta) {
+                    console.log('✅ Resposta de sucesso com campo "resposta"');
+                    showResult('success', '✅ Análise Concluída', data.resposta, data.metadados);
+                }
+                else if (data.sucesso === false && data.resposta) {
+                    console.log('⚠️ Resposta de "sucesso" false mas com conteúdo');
+                    showResult('error', '❌ Erro na Análise', data.resposta, null, data.debug);
+                }
+                else if (data.erro === true) {
+                    console.log('❌ Resposta de erro explícito');
+                    const errorMsg = data.mensagem || data.resposta || 'Erro não especificado';
+                    const errorDetails = data.detalhes || '';
+                    showResult('error', '❌ Erro na Análise', `${errorMsg}\n${errorDetails}`, null, data);
+                }
+                else if (data.resposta && !data.erro) {
+                    console.log('✅ Resposta com campo "resposta" sem erro');
+                    showResult('success', '✅ Análise Concluída', data.resposta, data.metadados || data);
+                }
+                else if (data.message || data.resultado || data.output) {
+                    console.log('✅ Resposta com campo alternativo');
+                    const content = data.message || data.resultado || data.output;
+                    showResult('success', '✅ Análise Concluída', content, data);
+                }
+                else if (typeof data === 'string') {
+                    console.log('✅ Resposta direta em string');
+                    showResult('success', '✅ Análise Concluída', data);
+                }
+                else {
+                    console.log('⚠️ Estrutura de resposta não reconhecida');
+                    
+                    // Tentar encontrar qualquer campo que pareça conter texto de resposta
+                    const possibleFields = ['text', 'content', 'data', 'result'];
+                    let foundContent = false;
+                    
+                    for (const field of possibleFields) {
+                        if (data[field] && typeof data[field] === 'string' && data[field].length > 10) {
+                            console.log(`✅ Conteúdo encontrado no campo: ${field}`);
+                            showResult('success', '✅ Análise Concluída', data[field], data);
+                            foundContent = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!foundContent) {
+                        console.log('❌ Nenhum conteúdo identificável encontrado');
+                        showResult('error', '❌ Estrutura Inesperada', 
+                            'Resposta recebida mas não foi possível extrair o conteúdo. Verifique a estrutura de retorno do workflow.',
+                            null, { full_response: data });
+                    }
+                }
+                
+            } catch (error) {
+                console.error('=== ERRO NA REQUISIÇÃO ===');
+                console.error('Tipo:', error.constructor.name);
+                console.error('Mensagem:', error.message);
+                console.error('Stack:', error.stack);
+                
+                let errorMessage = 'Erro desconhecido ao processar solicitação.';
+                
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage = 'Erro de conexão: Verifique sua internet e se o webhook está ativo.';
+                } else if (error.message.includes('HTTP 4')) {
+                    errorMessage = `Erro no cliente: ${error.message}`;
+                } else if (error.message.includes('HTTP 5')) {
+                    errorMessage = `Erro no servidor: ${error.message}`;
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                showResult('error', '❌ Erro de Processamento', errorMessage);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function showLoading(show) {
+            loading.classList.toggle('show', show);
+            submitBtn.disabled = show;
+            submitBtn.textContent = show ? '⏳ Processando...' : '🚀 Analisar Dados';
+        }
+        
+        function showResult(type, title, content, meta = null, debugData = null) {
+            result.className = `result show ${type}`;
+            resultTitle.textContent = title;
+            resultContent.textContent = content;
+            
+            // Mostrar metadados se disponíveis
+            if (meta && (meta.total_notas_fiscais !== undefined || meta.total_nfs !== undefined)) {
+                const totalNfs = meta.total_notas_fiscais || meta.total_nfs || 'N/A';
+                const totalItens = meta.total_itens || 'N/A';
+                const valorTotal = meta.valor_total_geral || meta.valor_total || 'N/A';
+                const qtdTotal = meta.quantidade_total_itens || meta.quantidade_total || 'N/A';
+                const periodo = meta.periodo || 'N/A';
+                const processadoEm = meta.processado_em ? new Date(meta.processado_em).toLocaleString('pt-BR') : 'N/A';
+                
+                metadata.innerHTML = `
+                    <strong>📊 Informações do processamento:</strong><br>
+                    • Total de NFs: ${totalNfs}<br>
+                    • Total de itens: ${totalItens}<br>
+                    • Valor total geral: ${valorTotal}<br>
+                    • Quantidade total de itens: ${qtdTotal}<br>
+                    • Período: ${periodo}<br>
+                    • Processado em: ${processadoEm}
+                `;
+                metadata.style.display = 'block';
+            } else {
+                metadata.style.display = 'none';
+            }
+            
+            // Mostrar informações de debug se necessário
+            if (debugData) {
+                let debugContent = '<strong>🔍 Informações de Debug:</strong><br>';
+                
+                if (debugData.raw_response) {
+                    debugContent += `<div class="raw-response"><strong>Resposta Raw:</strong><br>${debugData.raw_response}</div>`;
+                }
+                
+                if (debugData.full_response) {
+                    debugContent += `<pre>${JSON.stringify(debugData.full_response, null, 2)}</pre>`;
+                } else {
+                    debugContent += `<pre>${JSON.stringify(debugData, null, 2)}</pre>`;
+                }
+                
+                debugInfo.innerHTML = debugContent;
+                debugInfo.style.display = 'block';
+            } else {
+                debugInfo.style.display = 'none';
+            }
+        }
+        
+        function hideResult() {
+            result.classList.remove('show');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Exemplos de perguntas
+        const exampleQuestions = [
+            'Qual o valor total das notas fiscais do período?',
+            'Quais são os 10 produtos mais vendidos?',
+            'Qual a média de valor por nota fiscal?',
+            'Quantos itens diferentes foram vendidos?',
+            'Qual o ticket médio por item?',
+            'Em que dias da semana houve mais vendas?'
+        ];
+        
+        // Adicionar placeholder dinâmico
+        let currentExample = 0;
+        setInterval(() => {
+            if (!questionInput.value) {
+                questionInput.placeholder = exampleQuestions[currentExample];
+                currentExample = (currentExample + 1) % exampleQuestions.length;
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

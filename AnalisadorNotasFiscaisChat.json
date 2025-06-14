@@ -1,0 +1,223 @@
+{
+  "name": "AnalisadorNotasFiscaisChat",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        780,
+        -80
+      ],
+      "id": "9e8a9d66-4f2e-4501-8fee-4a25f4051ef9",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        780,
+        120
+      ],
+      "id": "faac4a6f-1abe-48da-99dd-5f1a8715ce69",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Iaij6fAxsJ7LwT2K",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar dados extraídos com pergunta original\nconst items = $input.all();\nconst chatTriggerData = $('Chat').first();\n\n// Extrair pergunta original do chat trigger\nlet chatInput = '';\nif (chatTriggerData && chatTriggerData.json && chatTriggerData.json.chatInput) {\n  chatInput = chatTriggerData.json.chatInput;\n} else if (chatTriggerData && chatTriggerData.json && chatTriggerData.json.body) {\n  chatInput = chatTriggerData.json.body;\n}\n\n// Separar pergunta dos dados de arquivos anexados (se houver)\nconst questionPart = chatInput.split('\\n\\nArquivos anexados:')[0] || chatInput || 'Analise os dados CSV anexados';\n\nlet combinedContent = questionPart + '\\n\\nArquivos CSV processados:\\n';\n\n// Verificar se temos dados dos CSVs\nconsole.log('Items recebidos:', items.length);\nconsole.log('Estrutura do primeiro item:', JSON.stringify(items[0], null, 2));\n\n// Processar dados CSV\nlet hasData = false;\nitems.forEach((item, index) => {\n  console.log(`Item ${index}:`, JSON.stringify(item.json, null, 2));\n  \n  // Verificar diferentes estruturas possíveis\n  if (item.json && Array.isArray(item.json)) {\n    // Se o JSON é um array direto\n    combinedContent += `\\n=== Arquivo CSV ${index + 1} ===\\n`;\n    combinedContent += JSON.stringify(item.json.slice(0, 10), null, 2) + '\\n'; // Primeiras 10 linhas\n    hasData = true;\n  } else if (item.json && typeof item.json === 'object') {\n    // Se é um objeto, converter para visualização\n    combinedContent += `\\n=== Arquivo CSV ${index + 1} ===\\n`;\n    combinedContent += JSON.stringify(item.json, null, 2) + '\\n';\n    hasData = true;\n  }\n  \n  // Verificar se tem dados binários ainda\n  if (item.binary && Object.keys(item.binary).length > 0) {\n    combinedContent += `\\nArquivos binários detectados: ${Object.keys(item.binary).join(', ')}\\n`;\n  }\n});\n\nif (!hasData) {\n  combinedContent += '\\nATENÇÃO: Nenhum dado CSV foi processado corretamente. Verifique se os arquivos foram extraídos do ZIP.\\n';\n  combinedContent += 'Estrutura recebida: ' + JSON.stringify(items.map(item => ({\n    json: typeof item.json,\n    jsonKeys: item.json ? Object.keys(item.json) : [],\n    binary: item.binary ? Object.keys(item.binary) : []\n  })), null, 2);\n}\n\nreturn [{\n  json: {\n    chatInput: combinedContent\n  }\n}];"
+      },
+      "name": "Combinar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -80
+      ],
+      "id": "31ca269f-3d15-4fa4-b072-0c560328507a"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "={{ $json.csvKey }}",
+        "options": {
+          "delimiter": ",",
+          "encoding": "utf-8",
+          "relaxQuotes": true
+        }
+      },
+      "name": "Extract CSV Data",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -80
+      ],
+      "id": "21afab56-a3af-4ca2-93b2-dc66ce7c764e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fixar extensão do arquivo ZIP\nconst item = $input.first();\nconst output = {\n  json: item.json,\n  binary: {}\n};\n\nfor (const [key, value] of Object.entries(item.binary || {})) {\n  output.binary[key] = {\n    ...value,\n    fileExtension: key === 'data0' ? 'zip' : (value.fileExtension || ''),\n    mimeType: key === 'data0' ? 'application/zip' : (value.mimeType || '')\n  };\n}\n\nreturn [output];"
+      },
+      "name": "Fixar ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        -80
+      ],
+      "id": "fac283f7-4861-41df-9fb7-5e99d9133c89"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "data0"
+      },
+      "name": "Extrair ZIP",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1,
+      "position": [
+        40,
+        -80
+      ],
+      "id": "6b6e783d-5ca7-4ec5-911d-9cf5e3531942"
+    },
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Envie um arquivo ZIP com CSVs e sua pergunta para análise.",
+        "options": {
+          "allowFileUploads": true,
+          "inputPlaceholder": "Sua pergunta sobre os dados",
+          "subtitle": "",
+          "title": "Analisador de Notas Fiscais",
+          "customCss": ":root {\n  /* Colors - Usando paleta similar ao index.html */\n  --chat--color-primary: #667eea;\n  --chat--color-primary-shade-50: #5a6fd8;\n  --chat--color-primary-shade-100: #4d5fc5;\n  --chat--color-secondary: #764ba2;\n  --chat--color-secondary-shade-50: #6a4591;\n  --chat--color-white: #ffffff;\n  --chat--color-light: #f8f9ff;\n  --chat--color-light-shade-50: #f0f2ff;\n  --chat--color-light-shade-100: #e6e9f1;\n  --chat--color-medium: #d2d4d9;\n  --chat--color-dark: #333333;\n  --chat--color-disabled: #777980;\n  --chat--color-typing: #404040;\n\n  /* Base Layout */\n  --chat--spacing: 1rem;\n  --chat--border-radius: 15px;\n  --chat--transition-duration: 0.3s;\n  --chat--font-family: (\n    'Segoe UI',\n    Tahoma,\n    Geneva,\n    Verdana,\n    sans-serif\n  );\n\n  /* Window Dimensions */\n  --chat--window--width: 420px;\n  --chat--window--height: 650px;\n  --chat--window--bottom: var(--chat--spacing);\n  --chat--window--right: var(--chat--spacing);\n  --chat--window--z-index: 9999;\n  --chat--window--border: none;\n  --chat--window--border-radius: var(--chat--border-radius);\n  --chat--window--margin-bottom: var(--chat--spacing);\n  --chat--window--box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);\n\n  /* Header Styles */\n  --chat--header-height: auto;\n  --chat--header--padding: calc(var(--chat--spacing) * 1.5);\n  --chat--header--background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  --chat--header--color: var(--chat--color-white);\n  --chat--header--border-top: none;\n  --chat--header--border-bottom: none;\n  --chat--header--border-left: none;\n  --chat--header--border-right: none;\n  --chat--header--border-radius: var(--chat--border-radius) var(--chat--border-radius) 0 0;\n  --chat--heading--font-size: 1.8em;\n  --chat--heading--font-weight: 600;\n  --chat--subtitle--font-size: 0.9em;\n  --chat--subtitle--line-height: 1.6;\n  --chat--subtitle--opacity: 0.9;\n\n  /* Message Styles */\n  --chat--message--font-size: 1rem;\n  --chat--message--padding: calc(var(--chat--spacing) * 0.75) var(--chat--spacing);\n  --chat--message--border-radius: 18px;\n  --chat--message-line-height: 1.5;\n  --chat--message--margin-bottom: calc(var(--chat--spacing) * 0.75);\n  --chat--message--bot--background: var(--chat--color-white);\n  --chat--message--bot--color: var(--chat--color-dark);\n  --chat--message--bot--border: 2px solid #e1e5e9;\n  --chat--message--bot--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);\n  --chat--message--user--background: #f0f2ff;\n  --chat--message--user--color: var(--chat--color-dark);\n  --chat--message--user--border: 2px solid #667eea;\n  --chat--message--user--box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);\n  --chat--message--pre--background: rgba(0, 0, 0, 0.05);\n  --chat--messages-list--padding: var(--chat--spacing);\n\n  /* Toggle Button */\n  --chat--toggle--size: 68px;\n  --chat--toggle--width: var(--chat--toggle--size);\n  --chat--toggle--height: var(--chat--toggle--size);\n  --chat--toggle--border-radius: 50%;\n  --chat--toggle--background: linear-gradient(45deg, #667eea, #764ba2);\n  --chat--toggle--hover--background: linear-gradient(45deg, #5a6fd8, #6a4591);\n  --chat--toggle--active--background: linear-gradient(45deg, #4d5fc5, #5e3f80);\n  --chat--toggle--color: var(--chat--color-white);\n  --chat--toggle--box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);\n  --chat--toggle--hover--transform: translateY(-2px);\n\n  /* Input Area */\n  --chat--textarea--height: 55px;\n  --chat--textarea--max-height: 30rem;\n  --chat--input--font-size: inherit;\n  --chat--input--border: 2px solid #e1e5e9;\n  --chat--input--border-radius: 25px;\n  --chat--input--padding: 1rem 1.2rem;\n  --chat--input--background: var(--chat--color-white);\n  --chat--input--text-color: var(--chat--color-dark);\n  --chat--input--line-height: 1.5;\n  --chat--input--placeholder--font-size: var(--chat--input--font-size);\n  --chat--input--border-active: 2px solid #667eea;\n  --chat--input--left--panel--width: 2rem;\n  --chat--input--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);\n  --chat--input--focus--box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);\n\n  /* Button Styles */\n  --chat--button--color: var(--chat--color-white);\n  --chat--button--background: linear-gradient(45deg, #667eea, #764ba2);\n  --chat--button--padding: calc(var(--chat--spacing) * 0.6) calc(var(--chat--spacing) * 1.2);\n  --chat--button--border-radius: 25px;\n  --chat--button--font-weight: 600;\n  --chat--button--hover--color: var(--chat--color-white);\n  --chat--button--hover--background: linear-gradient(45deg, #5a6fd8, #6a4591);\n  --chat--button--hover--transform: translateY(-1px);\n  --chat--button--box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);\n  --chat--close--button--color-hover: var(--chat--color-primary);\n\n  /* Send and File Buttons */\n  --chat--input--send--button--background: linear-gradient(45deg, #667eea, #764ba2);\n  --chat--input--send--button--color: var(--chat--color-white);\n  --chat--input--send--button--background-hover: linear-gradient(45deg, #5a6fd8, #6a4591);\n  --chat--input--send--button--color-hover: var(--chat--color-white);\n  --chat--input--send--button--border-radius: 50%;\n  --chat--input--send--button--box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);\n  --chat--input--file--button--background: var(--chat--color-light-shade-50);\n  --chat--input--file--button--color: var(--chat--color-primary);\n  --chat--input--file--button--background-hover: var(--chat--color-primary);\n  --chat--input--file--button--color-hover: var(--chat--color-white);\n  --chat--input--file--button--border-radius: 50%;\n  --chat--input--file--button--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);\n  --chat--files-spacing: 0.25rem;\n\n  /* Body and Footer */\n  --chat--body--background: var(--chat--color-light);\n  --chat--footer--background: var(--chat--color-white);\n  --chat--footer--color: var(--chat--color-dark);\n  --chat--footer--border-radius: 0 0 var(--chat--border-radius) var(--chat--border-radius);\n  --chat--footer--padding: calc(var(--chat--spacing) * 0.75);\n}\n\n/* Estilos customizados adicionais */\n.chat-window {\n  background: var(--chat--color-white) !important;\n  backdrop-filter: blur(10px);\n  border: none !important;\n  box-shadow: var(--chat--window--box-shadow) !important;\n}\n\n.chat-header {\n  background: var(--chat--header--background) !important;\n  border-radius: var(--chat--header--border-radius) !important;\n  position: relative;\n  overflow: hidden;\n}\n\n.chat-header::before {\n  content: '';\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);\n  pointer-events: none;\n}\n\n.chat-message {\n  max-width: 85% !important;\n  transition: all var(--chat--transition-duration) ease;\n  position: relative;\n}\n\n.chat-message.user {\n  background: var(--chat--message--user--background) !important;\n  color: var(--chat--color-dark) !important;\n  border: var(--chat--message--user--border) !important;\n  box-shadow: var(--chat--message--user--box-shadow) !important;\n}\n\n.chat-message.bot {\n  background: var(--chat--message--bot--background) !important;\n  border: var(--chat--message--bot--border) !important;\n  box-shadow: var(--chat--message--bot--box-shadow) !important;\n}\n\n.chat-input-area {\n  background: var(--chat--footer--background) !important;\n  border-radius: var(--chat--footer--border-radius) !important;\n  padding: var(--chat--footer--padding) !important;\n}\n\n.chat-input {\n  border: var(--chat--input--border) !important;\n  border-radius: var(--chat--input--border-radius) !important;\n  box-shadow: var(--chat--input--box-shadow) !important;\n  transition: all var(--chat--transition-duration) ease !important;\n}\n\n.chat-input:focus {\n  border: var(--chat--input--border-active) !important;\n  box-shadow: var(--chat--input--focus--box-shadow) !important;\n  outline: none !important;\n}\n\n.chat-send-button {\n  background: var(--chat--input--send--button--background) !important;\n  border-radius: var(--chat--input--send--button--border-radius) !important;\n  box-shadow: var(--chat--input--send--button--box-shadow) !important;\n  transition: all var(--chat--transition-duration) ease !important;\n  border: none !important;\n  width: 45px !important;\n  height: 45px !important;\n}\n\n.chat-send-button:hover {\n  background: var(--chat--input--send--button--background-hover) !important;\n  transform: var(--chat--button--hover--transform) !important;\n}\n\n.chat-file-button {\n  background: var(--chat--input--file--button--background) !important;\n  border-radius: var(--chat--input--file--button--border-radius) !important;\n  box-shadow: var(--chat--input--file--button--box-shadow) !important;\n  transition: all var(--chat--transition-duration) ease !important;\n  border: none !important;\n  width: 40px !important;\n  height: 40px !important;\n}\n\n.chat-file-button:hover {\n  background: var(--chat--input--file--button--background-hover) !important;\n  color: var(--chat--input--file--button--color-hover) !important;\n  transform: var(--chat--button--hover--transform) !important;\n}\n\n.chat-toggle {\n  background: var(--chat--toggle--background) !important;\n  box-shadow: var(--chat--toggle--box-shadow) !important;\n  transition: all var(--chat--transition-duration) ease !important;\n  border: none !important;\n}\n\n.chat-toggle:hover {\n  background: var(--chat--toggle--hover--background) !important;\n  transform: var(--chat--toggle--hover--transform) !important;\n  box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5) !important;\n}\n\n.chat-close-button {\n  background: rgba(255, 255, 255, 0.2) !important;\n  border: none !important;\n  border-radius: 50% !important;\n  width: 30px !important;\n  height: 30px !important;\n  transition: all var(--chat--transition-duration) ease !important;\n}\n\n.chat-close-button:hover {\n  background: rgba(255, 255, 255, 0.3) !important;\n  transform: rotate(90deg) !important;\n}\n\n/* Animações suaves */\n@keyframes slideInUp {\n  from {\n    opacity: 0;\n    transform: translateY(20px);\n  }\n  to {\n    opacity: 1;\n    transform: translateY(0);\n  }\n}\n\n.chat-message {\n  animation: slideInUp 0.3s ease-out;\n}\n\n/* Scrollbar customizada */\n.chat-messages::-webkit-scrollbar {\n  width: 6px;\n}\n\n.chat-messages::-webkit-scrollbar-track {\n  background: var(--chat--color-light);\n}\n\n.chat-messages::-webkit-scrollbar-thumb {\n  background: linear-gradient(135deg, #667eea, #764ba2);\n  border-radius: 3px;\n}\n\n.chat-messages::-webkit-scrollbar-thumb:hover {\n  background: linear-gradient(135deg, #5a6fd8, #6a4591);\n}\n\n/* Efeito de glassmorphism no header */\n.chat-header {\n  backdrop-filter: blur(20px);\n  -webkit-backdrop-filter: blur(20px);\n}\n\n/* Hover effects para mensagens */\n.chat-message:hover {\n  transform: translateY(-1px);\n}\n\n.chat-message.user:hover {\n  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3) !important;\n}\n\n.chat-message.bot:hover {\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;\n}\n\n/* Tooltips/Hints para botões */\n[data-tooltip] {\n  position: relative;\n}\n\n[data-tooltip]:before {\n  content: attr(data-tooltip);\n  position: absolute;\n  bottom: 150%;\n  left: 50%;\n  transform: translateX(-50%);\n  background: linear-gradient(45deg, #667eea, #764ba2);\n  color: white;\n  padding: 8px 12px;\n  border-radius: 8px;\n  font-size: 12px;\n  font-weight: 500;\n  white-space: nowrap;\n  opacity: 0;\n  visibility: hidden;\n  transition: all 0.3s ease;\n  z-index: 10001;\n  pointer-events: none;\n  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);\n  min-width: max-content;\n}\n\n[data-tooltip]:after {\n  content: '';\n  position: absolute;\n  bottom: 142%;\n  left: 50%;\n  transform: translateX(-50%);\n  border: 5px solid transparent;\n  border-top-color: #667eea;\n  opacity: 0;\n  visibility: hidden;\n  transition: all 0.3s ease;\n  z-index: 10001;\n  pointer-events: none;\n}\n\n[data-tooltip]:hover:before,\n[data-tooltip]:hover:after {\n  opacity: 1;\n  visibility: visible;\n}\n\n/* Posicionamento específico para botões do chat */\n.chat-send-button[data-tooltip]:before {\n  right: 0;\n  left: auto;\n  transform: translateX(0);\n}\n\n.chat-send-button[data-tooltip]:after {\n  right: 20px;\n  left: auto;\n  transform: translateX(0);\n}\n\n.chat-file-button[data-tooltip]:before {\n  left: 0;\n  transform: translateX(0);\n}\n\n.chat-file-button[data-tooltip]:after {\n  left: 20px;\n  transform: translateX(0);\n}\n\n/* Forçar texto preto em mensagens do usuário */\n.chat-message.user,\n.chat-message.user *,\n.chat-message.user p,\n.chat-message.user span,\n.chat-message.user div {\n  color: var(--chat--color-dark) !important;\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -300,
+        -80
+      ],
+      "id": "d086094f-0b63-457f-998f-a720779c27c5",
+      "name": "Chat",
+      "webhookId": "b795876a-271d-45b5-9ada-1347285e1dbf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Criar um item separado para cada arquivo CSV encontrado\nconst item = $input.first();\nconst results = [];\n\n// Verificar se temos dados binários\nif (!item.binary || Object.keys(item.binary).length === 0) {\n  return [{\n    json: { error: 'Nenhum arquivo binário encontrado' },\n    binary: {}\n  }];\n}\n\n// Criar um item para cada arquivo CSV\nfor (const [key, binaryData] of Object.entries(item.binary)) {\n  // Verificar se é um arquivo CSV\n  const fileName = binaryData.fileName || key;\n  const isCSV = fileName.toLowerCase().includes('.csv') || \n                binaryData.mimeType === 'text/csv' ||\n                binaryData.mimeType === 'application/csv';\n  \n  if (isCSV) {\n    // Criar um item com apenas este arquivo CSV\n    results.push({\n      json: {\n        csvFileName: fileName,\n        csvKey: key\n      },\n      binary: {\n        [key]: binaryData\n      }\n    });\n  }\n}\n\n// Se não encontrou CSVs, retornar erro\nif (results.length === 0) {\n  return [{\n    json: { error: 'Nenhum arquivo CSV válido encontrado nos dados binários' },\n    binary: {}\n  }];\n}\n\nconsole.log(`Encontrados ${results.length} arquivos CSV`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        -80
+      ],
+      "id": "dc740e1e-fc65-4114-ac8e-bdb9014d7d04",
+      "name": "Separar CSVs"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar Dados": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CSV Data": {
+      "main": [
+        [
+          {
+            "node": "Combinar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixar ZIP": {
+      "main": [
+        [
+          {
+            "node": "Extrair ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair ZIP": {
+      "main": [
+        [
+          {
+            "node": "Separar CSVs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat": {
+      "main": [
+        [
+          {
+            "node": "Fixar ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar CSVs": {
+      "main": [
+        [
+          {
+            "node": "Extract CSV Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "801638e5-be33-4118-9e76-0e229058de1f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "87e4229d2ab01a02b3db8d4febfb000c57dbc4d60dcbb907fc9759f50fad78ea"
+  },
+  "id": "RjN8yq29uUqdTGlX",
+  "tags": []
+}

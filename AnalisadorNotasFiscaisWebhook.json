@@ -1,0 +1,399 @@
+{
+  "name": "AnalisadorNotasFiscaisWebhook",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Processar dados recebidos do webhook\nconst body = $input.first().json.body || {};\nconst files = $input.first().json.files || {};\nconst binary = $input.first().binary || {};\n\n// Verificar se temos algum arquivo ZIP (buscar por qualquer arquivo com extensão .zip)\nlet arquivoZip = null;\nlet nomeArquivoZip = null;\n\n// Primeiro, verificar se há arquivos nos files\nfor (const [key, value] of Object.entries(files)) {\n  if (key.toLowerCase().includes('.zip') || (value && value.filename && value.filename.toLowerCase().endsWith('.zip'))) {\n    nomeArquivoZip = key;\n    break;\n  }\n}\n\n// Se não encontrou nos files, verificar nos binary\nif (!nomeArquivoZip) {\n  for (const [key, value] of Object.entries(binary)) {\n    if (key.toLowerCase().includes('.zip') || key.toLowerCase().includes('zip')) {\n      nomeArquivoZip = key;\n      arquivoZip = value;\n      break;\n    }\n  }\n}\n\n// Se ainda não encontrou, pegar o primeiro arquivo disponível\nif (!nomeArquivoZip) {\n  const binaryKeys = Object.keys(binary);\n  const fileKeys = Object.keys(files);\n  \n  if (binaryKeys.length > 0) {\n    nomeArquivoZip = binaryKeys[0];\n    arquivoZip = binary[binaryKeys[0]];\n  } else if (fileKeys.length > 0) {\n    nomeArquivoZip = fileKeys[0];\n  }\n}\n\n// Verificar se encontramos algum arquivo\nif (!nomeArquivoZip && !data) {\n  return [{\n    json: {\n      erro: true,\n      mensagem: \"Arquivo ZIP não encontrado\",\n      detalhes: \"Certifique-se de enviar um arquivo ZIP com os CSVs das notas fiscais\",\n      debug: {\n        files_keys: Object.keys(files),\n        binary_keys: Object.keys(binary)\n      }\n    }\n  }];\n}\n\n// Verificar se temos pergunta\nif (!body.pergunta || body.pergunta.trim() === '') {\n  return [{\n    json: {\n      erro: true,\n      mensagem: \"Pergunta não fornecida\",\n      detalhes: \"Digite uma pergunta sobre os dados das notas fiscais\"\n    }\n  }];\n}\n\n// Preparar saída com dados binários preservados\nconst output = {\n  json: {\n    pergunta: body.pergunta.trim(),\n    valido: true,\n    arquivo_original: nomeArquivoZip\n  },\n  binary: {}\n};\n\n// Copiar todos os dados binários e renomear o arquivo ZIP para 'arquivo_zip'\nfor (const [key, value] of Object.entries(binary)) {\n  if (key === nomeArquivoZip) {\n    output.binary['data'] = value;\n  } else {\n    output.binary[key] = value;\n  }\n}\n\n// Se não havia dados binários, mas havia referência em files, tentar buscar\nif (!output.binary['data'] && files[nomeArquivoZip]) {\n  // Neste caso, o arquivo pode estar em uma estrutura diferente\n  output.binary['data'] = files[nomeArquivoZip];\n}\n\nreturn [output];"
+      },
+      "name": "Processar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1540,
+        -440
+      ],
+      "id": "99f964e3-f26c-4fb7-b22b-8b1bc0b873a8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valido }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Validar Dados",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1360,
+        -440
+      ],
+      "id": "d6ff0b75-dfdf-4b59-9776-1c2adf340119"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fixar extensão do arquivo ZIP para garantir extração correta\nconst item = $input.first();\nconst output = {\n  json: item.json,\n  binary: {}\n};\n\n// Copiar todos os dados binários\nfor (const [key, value] of Object.entries(item.binary || {})) {\n  output.binary[key] = {\n    ...value,\n    // Forçar extensão .zip se for o arquivo principal\n    fileExtension: key === 'data' ? 'zip' : (value.fileExtension || ''),\n    mimeType: key === 'data' ? 'application/zip' : (value.mimeType || '')\n  };\n}\n\nconsole.log('Dados binários processados:', Object.keys(output.binary));\nconsole.log('Arquivo ZIP configurado:', output.binary['data'] ? 'SIM' : 'NÃO');\n\nreturn [output];"
+      },
+      "name": "Fixar ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        -440
+      ],
+      "id": "6d31cef5-85a2-4774-b779-aaa4d403cdec"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Resposta Erro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -1220,
+        -320
+      ],
+      "id": "69a83129-b307-43fa-b7b6-1f212a9db568"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Criar um item separado para cada arquivo CSV encontrado\nconst item = $input.first();\nconst results = [];\n\n// Verificar se temos dados binários\nif (!item.binary || Object.keys(item.binary).length === 0) {\n  return [{\n    json: { error: 'Nenhum arquivo binário encontrado' },\n    binary: {}\n  }];\n}\n\n// Criar um item para cada arquivo CSV\nfor (const [key, binaryData] of Object.entries(item.binary)) {\n  // Verificar se é um arquivo CSV\n  const fileName = binaryData.fileName || key;\n  const isCSV = fileName.toLowerCase().includes('.csv') || \n                binaryData.mimeType === 'text/csv' ||\n                binaryData.mimeType === 'application/csv';\n  \n  if (isCSV) {\n    // Criar um item com apenas este arquivo CSV\n    results.push({\n      json: {\n        csvFileName: fileName,\n        csvKey: key\n      },\n      binary: {\n        [key]: binaryData\n      }\n    });\n  }\n}\n\n// Se não encontrou CSVs, retornar erro\nif (results.length === 0) {\n  return [{\n    json: { error: 'Nenhum arquivo CSV válido encontrado nos dados binários' },\n    binary: {}\n  }];\n}\n\nconsole.log(`Encontrados ${results.length} arquivos CSV`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -440
+      ],
+      "id": "15a88bed-d87f-401a-ad33-a0d960211230",
+      "name": "Separar CSVs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const linhas = $input.all();\nconst pergunta = $node['Processar Entrada']?.json?.pergunta ?? '';\n\nconsole.log(`Recebidas ${linhas.length} linhas de dados para processamento completo`);\n\n// Coletar TODOS os dados sem interpretação ou classificação\nconst todosOsDados = [];\n\nlinhas.forEach((item, index) => {\n  const linha = item.json;\n  if (linha && typeof linha === 'object' && !Array.isArray(linha)) {\n    todosOsDados.push({\n      registro_numero: index + 1,\n      dados_originais: linha\n    });\n  }\n});\n\nconsole.log(`Total de registros coletados: ${todosOsDados.length}`);\n\n// Identificar todas as colunas únicas presentes nos dados\nconst todasAsColunas = new Set();\ntodosOsDados.forEach(registro => {\n  Object.keys(registro.dados_originais).forEach(coluna => {\n    todasAsColunas.add(coluna);\n  });\n});\n\nreturn [{\n  json: {\n    pergunta,\n    todos_os_dados_brutos: todosOsDados,\n    total_registros: todosOsDados.length,\n    colunas_identificadas: Array.from(todasAsColunas).sort(),\n    fonte: 'Dados completos sem processamento ou interpretação'\n  }\n}];"
+      },
+      "name": "Combinar dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -440
+      ],
+      "id": "65eb7b55-6288-4e2e-8e5f-35a5085ffe2b",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $input.first().json;\nconst pergunta = dados.pergunta || '';\nconst todosOsDados = dados.todos_os_dados_brutos || [];\nconst totalRegistros = dados.total_registros || 0;\nconst colunasIdentificadas = dados.colunas_identificadas || [];\n\n// Converter todos os dados para JSON string formatado para envio completo\nconst dadosCompletosJSON = JSON.stringify(todosOsDados, null, 2);\n\n// Criar prompt otimizado que pede resposta concisa\nconst prompt = `Você é um especialista em análise fiscal e contábil. Analise os dados das notas fiscais e responda à pergunta de forma DIRETA e CONCISA.\n\n**PERGUNTA:** ${pergunta}\n\n**DADOS COMPLETOS DAS NOTAS FISCAIS:**\n${dadosCompletosJSON}\n\n**INSTRUÇÕES:**\n1. Analise TODOS os ${totalRegistros} registros fornecidos\n2. Responda de forma OBJETIVA e DIRETA\n3. Foque apenas na informação solicitada\n4. Use formatação clara com valores em negrito (**texto**)\n5. Limite a resposta a 2-3 frases essenciais\n6. Não inclua explicações extensas sobre o processo de análise\n\nRESPOSTA CONCISA:`;\n\nreturn [{\n  json: {\n    contents: [\n      {\n        parts: [\n          {\n            text: prompt\n          }\n        ]\n      }\n    ],\n    generationConfig: {\n      temperature: 0.1,\n      maxOutputTokens: 500, // Reduzido para respostas mais concisas\n      topP: 0.9\n    },\n    pergunta_original: pergunta,\n    total_registros_enviados: totalRegistros,\n    colunas_enviadas: colunasIdentificadas.length\n  }\n}];"
+      },
+      "name": "Preparar Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -440
+      ],
+      "id": "4b86ba7b-e90f-45f8-b5fa-59ef311c3fc8"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analisar-nf",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1740,
+        -440
+      ],
+      "id": "6b183c88-3569-44cc-a54c-d41dc0e7dab6",
+      "webhookId": "24be2825-ce99-4eac-89d2-fba8ba565d5c"
+    },
+    {
+      "parameters": {},
+      "name": "Extrair ZIP",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        -440
+      ],
+      "id": "a40a9732-1bb7-4efa-a0be-c7b9f2d3d618"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obter resposta do Gemini\nconst response = $input.first().json;\nlet respostaGemini = 'Não foi possível gerar uma resposta.';\nlet sucessoAPI = false;\n\nconsole.log('Resposta completa da API:', JSON.stringify(response, null, 2));\n\n// Verificar diferentes possíveis estruturas de resposta\nif (response.candidates && response.candidates.length > 0) {\n  const candidate = response.candidates[0];\n  if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {\n    respostaGemini = candidate.content.parts[0].text;\n    sucessoAPI = true;\n  }\n} else if (response.error) {\n  respostaGemini = `Erro na API do Gemini: ${response.error.message || JSON.stringify(response.error)}`;\n  console.error('Erro da API:', response.error);\n} else if (response.message) {\n  // Caso a resposta venha em formato diferente\n  respostaGemini = response.message;\n  sucessoAPI = true;\n} else {\n  // Log completo para debug\n  console.error('Estrutura de resposta inesperada:', response);\n  respostaGemini = `Erro: Estrutura de resposta inesperada. Status HTTP: ${response.statusCode || 'desconhecido'}`;\n}\n\n// Obter dados do prompt anterior\nconst dadosPrompt = $('Preparar Prompt').first().json;\n\n// Calcular metadados seguros com verificações de undefined\nconst totalRegistros = dadosPrompt.total_registros_enviados || 0;\nconst totalColunas = dadosPrompt.colunas_enviadas || 0;\n\n// Formatar resposta final com valores seguros\nconst respostaFinal = {\n  sucesso: sucessoAPI,\n  pergunta: dadosPrompt.pergunta_original || 'Pergunta não informada',\n  resposta: respostaGemini,\n  debug: {\n    response_structure: Object.keys(response),\n    has_candidates: !!response.candidates,\n    has_error: !!response.error,\n    status_code: response.statusCode\n  },\n  metadados: {\n    total_registros_processados: totalRegistros,\n    total_colunas_identificadas: totalColunas,\n    processado_em: new Date().toISOString(),\n    fonte_dados: 'Arquivos CSV extraídos de ZIP'\n  }\n};\n\nreturn [{ json: respostaFinal }];"
+      },
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        -440
+      ],
+      "id": "18da9736-e42e-42a8-87b7-63764cca5d10"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "={{ $json.csvKey }}",
+        "options": {
+          "delimiter": ",",
+          "encoding": "utf-8",
+          "relaxQuotes": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -440
+      ],
+      "id": "4c50526f-0249-406a-9b41-dce7a618b609",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contents: $json.contents,\n  generationConfig: $json.generationConfig\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Chamada API Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        -440
+      ],
+      "id": "0218f538-3eb6-4ad0-a4d9-74427db27c6b",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1ix7WNwHoARwGfiG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Resposta Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        -440
+      ],
+      "id": "284841de-c27b-4302-9f09-3d5437b60de9"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Processar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Validar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Dados": {
+      "main": [
+        [
+          {
+            "node": "Fixar ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixar ZIP": {
+      "main": [
+        [
+          {
+            "node": "Extrair ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar CSVs": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar dados": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt": {
+      "main": [
+        [
+          {
+            "node": "Chamada API Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Processar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair ZIP": {
+      "main": [
+        [
+          {
+            "node": "Separar CSVs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Combinar dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamada API Gemini": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2470f6f4-01ad-499b-942f-52d48f48b88a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "87e4229d2ab01a02b3db8d4febfb000c57dbc4d60dcbb907fc9759f50fad78ea"
+  },
+  "id": "KUOhQbgJPD0eSvjy",
+  "tags": []
+}
